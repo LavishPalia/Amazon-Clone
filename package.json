@@ -1,0 +1,26 @@
+{
+  "name": "amazon-clone",
+  "version": "1.0.0",
+  "description": "A FullStack E-Commerce Website",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LavishPalia/Amazon-Clone.git"
+  },
+  "keywords": [],
+  "author": "Lavish Palia",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/LavishPalia/Amazon-Clone/issues"
+  },
+  "homepage": "https://github.com/LavishPalia/Amazon-Clone#readme",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^6.9.0"
+  }
+}
