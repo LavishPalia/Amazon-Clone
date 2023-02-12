@@ -1,12 +1,12 @@
-import User from '../models/user.schema.js'
-import asyncHandler from '../services/asyncHandler'
-import CustomError from '../utils/customError'
+import User from '../models/user.schema.js';
+import asyncHandler from '../services/asyncHandler';
+import CustomError from '../utils/customError';
+import mailHelper from '../utils/mailHelper';
 
 export default cookieOptions = {
-    expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-    httpOnly: true,
-}
-
+  expires: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+  httpOnly: true,
+};
 
 /*****************************************
  * @SIGNUP
@@ -15,37 +15,36 @@ export default cookieOptions = {
  * @parameters      name, email, password
  * @returns         User object, auth token
  *****************************************/
-export const signUp = asyncHandler(async(req, res) => {
-    const {name, email, password} = req.body;
+export const signUp = asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
 
-    if(!name || !email || !password) {
-        throw new CustomError('Please provide all fields', 400);
-    }
+  if (!name || !email || !password) {
+    throw new CustomError('Please provide all fields', 400);
+  }
 
-    const existingUser = await User.findOne({email});
+  const existingUser = await User.findOne({ email });
 
-    if(existingUser) {
-        throw new CustomError('User already exists', 400);
-    }
+  if (existingUser) {
+    throw new CustomError('User already exists', 400);
+  }
 
-    const user = await User.create({
-        name,
-        email,
-        password
-    })
+  const user = await User.create({
+    name,
+    email,
+    password,
+  });
 
-    const token = user.getJwtToken()
-    // console.log(user);
-    user.password = undefined;
+  const token = user.getJwtToken();
+  // console.log(user);
+  user.password = undefined;
 
-    res.cookie("token", token, cookieOptions);
-    res.status(200).json({
-        success: true,
-        token,
-        user
-    })
-})
-
+  res.cookie('token', token, cookieOptions);
+  res.status(200).json({
+    success: true,
+    token,
+    user,
+  });
+});
 
 /*****************************************
  * @Login
@@ -54,50 +53,95 @@ export const signUp = asyncHandler(async(req, res) => {
  * @parameters      email, password
  * @returns         User object, auth token
  *****************************************/
-export const login = asyncHandler(async(req, res) => {
-    const {email, password} = req.body;
+export const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-    if(!email || !password) {
-        throw new CustomError('Please provide all fields', 400);
-    }
+  if (!email || !password) {
+    throw new CustomError('Please provide all fields', 400);
+  }
 
-    const user = await User.findOne({email}).select("+password");
+  const user = await User.findOne({ email }).select('+password');
 
-    if(!user) {
-        throw new CustomError('Invalid Credentials', 400);
-    }
+  if (!user) {
+    throw new CustomError('Invalid Credentials', 400);
+  }
 
-    const isPassMatch = await user.comparePassword(password)
-    if(!isPassMatch) {
-        throw new CustomError('Invalid Credentials', 400);
-    }
+  const isPassMatch = await user.comparePassword(password);
+  if (!isPassMatch) {
+    throw new CustomError('Invalid Credentials', 400);
+  }
 
-    const token = user.getJwtToken()    
-    user.password = undefined;
+  const token = user.getJwtToken();
+  user.password = undefined;
 
-    res.cookie("token", token, cookieOptions);
-        res.status(200).json({
-        success: true,
-        token,
-        user
-    })
-})
+  res.cookie('token', token, cookieOptions);
+  res.status(200).json({
+    success: true,
+    token,
+    user,
+  });
+});
 
 /*****************************************
  * @Logout
  * @route           /api/auth/logout
  * @description     Logout user by clearing user cookies
- * @parameters      
+ * @parameters
  * @returns         success message
  *****************************************/
-export const logout = asyncHandler(async(_req, res) => {
-    res.cookie("token", null, {
-        expires: new Date(Date.now()), 
-        httpOnly: true
-    })
+export const logout = asyncHandler(async (_req, res) => {
+  res.cookie('token', null, {
+    expires: new Date(Date.now()),
+    httpOnly: true,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Logged out',
+  });
+});
+
+/*****************************************
+ * @FORGOT_PASSWORD
+ * @route           /api/auth/password/forgot
+ * @description     user will submit email and we will generate a token
+ * @parameters      email
+ * @returns         success message - email sent
+ *****************************************/
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    throw new CustomError('User not found', 404);
+  }
+
+  const resetPasswordToken = user.generateForgotPasswordToken();
+  await user.save({ validateBeforeSave: false });
+
+  const resetUrl = `${req.protocol}://${req.get(
+    'host'
+  )}/api/auth/password/reset/${resetPasswordToken}`;
+
+  const text = `your password reset url is \n\n ${resetUrl} \n\n`;
+  try {
+    await mailHelper({
+      email: user.email,
+      subject: 'Password Reset Email',
+      text: text,
+    });
 
     res.status(200).json({
-        success: true,
-        message: "Logged out"
-    })
-})
+      success: true,
+      message: `Email sent to ${user.email}`,
+    });
+  } catch (err) {
+    // claer token and its expiry in database
+    (user.forgotPasswordToken = undefined),
+      (user.forgotPasswordExpiry = undefined),
+      await user.save({ validateBeforeSave: false });
+
+    throw new CustomError(err.message || 'Email sent failure', 500);
+  }
+});
