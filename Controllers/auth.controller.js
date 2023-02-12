@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import { token } from 'morgan';
 import User from '../models/user.schema.js';
 import asyncHandler from '../services/asyncHandler';
 import CustomError from '../utils/customError';
@@ -117,12 +119,12 @@ export const forgotPassword = asyncHandler(async (req, res) => {
     throw new CustomError('User not found', 404);
   }
 
-  const resetPasswordToken = user.generateForgotPasswordToken();
+  const resetToken = user.generateForgotPasswordToken();
   await user.save({ validateBeforeSave: false });
 
   const resetUrl = `${req.protocol}://${req.get(
     'host'
-  )}/api/auth/password/reset/${resetPasswordToken}`;
+  )}/api/auth/password/reset/${resetToken}`;
 
   const text = `your password reset url is \n\n ${resetUrl} \n\n`;
   try {
@@ -144,4 +146,50 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
     throw new CustomError(err.message || 'Email sent failure', 500);
   }
+});
+
+/*****************************************
+ * @RESET_PASSWORD
+ * @route           /api/auth/password/reset/:resetToken
+ * @description     user will be able to reset password based on url token
+ * @parameters      token from url, password, confirm password
+ * @returns         User object
+ *****************************************/
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { token: resetToken } = req.params;
+  const { password, confirmPassword } = req.body;
+
+  const resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  const user = await User.findOne({
+    forgotPasswordToken: resetPasswordToken,
+    forgotPasswordExpiry: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    throw new CustomError('Password token is not valid or expired', 400);
+  }
+
+  if (password !== confirmPassword) {
+    throw new CustomError('Password and confirmPassword does not match.', 400);
+  }
+
+  user.password = password;
+  user.forgotPasswordToken = undefined;
+  user.forgotPasswordExpiry = undefined;
+
+  await user.save();
+
+  const token = user.getJwtToken();
+  user.password = undefined;
+
+  res.cookie('token', token, cookieOptions);
+  res.status(200).json({
+    success: true,
+    user,
+  });
 });
